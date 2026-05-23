@@ -548,6 +548,25 @@ function PreflopAnalyzer() {
     if (!newPositions.includes(villain2Pos)) setVillain2Pos(newPositions[2] || newPositions[0]);
   }
 
+  function nextHand() {
+    const currentIndex = positions.indexOf(heroPos);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % positions.length : 0;
+
+    // Rotate hero position and reset selected hand.
+    setHeroPos(positions[nextIndex]);
+    setHeroHand("AKs");
+    // Stack BB intentionally stays the same across positions.
+
+    // Reset spot/context options.
+    setScenario("Unopened Pot / RFI");
+    setVillainCount("0");
+    setVillain1Action("None");
+    setVillain2Action("None");
+    setOpenSizeFaced("2.2");
+    setTablePreset("Standard");
+    setIcmPressureQuick("0");
+  }
+
   return (
     <>
       <section className="panel">
@@ -564,6 +583,11 @@ function PreflopAnalyzer() {
         <div className="field"><label>Villain 1 Position</label><select value={villainPos} onChange={e => setVillainPos(e.target.value)}>{positions.map(x => <option key={x}>{x}</option>)}</select></div>
         <div className="field"><label>Villain 1 Action</label><select value={villain1Action} onChange={e => setVillain1Action(e.target.value)}>{["None","Open","Call","3-Bet","4-Bet","Jam"].map(x => <option key={x}>{x}</option>)}</select></div>
         {(villainCount === "2" || villainCount === "3+") && <><div className="field"><label>Villain 2 Position</label><select value={villain2Pos} onChange={e => setVillain2Pos(e.target.value)}>{positions.map(x => <option key={x}>{x}</option>)}</select></div><div className="field"><label>Villain 2 Action</label><select value={villain2Action} onChange={e => setVillain2Action(e.target.value)}>{["None","Open","Call","3-Bet","4-Bet","Jam"].map(x => <option key={x}>{x}</option>)}</select></div></>}
+      </section>
+
+      <section className="quickActionCard">
+        <button type="button" onClick={nextHand}>Next Position →</button>
+        <p>Moves hero position to the next seat, keeps stack BB, and resets hand + spot.</p>
       </section>
 
       {isUtgStraddleFormat(format) && (
