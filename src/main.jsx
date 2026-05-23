@@ -312,6 +312,111 @@ function normalizeFreqs(freq) {
   return { ...freq, raise, call, fold, primaryAction };
 }
 
+
+function applyShortStackJamLogic(freq, params) {
+  const stack = Number(params.stackBB || 25);
+  const firstIn = params.scenario === "Unopened Pot / RFI" || params.scenario === "Short Stack Open Jam";
+  const facingOpen = params.scenario === "Facing Open";
+  const facing3bet = params.scenario === "Facing 3-Bet" || params.villain1Action === "3-Bet" || params.villain2Action === "3-Bet";
+  const facing4bet = params.scenario === "Facing 4-Bet" || params.villain1Action === "4-Bet" || params.villain2Action === "4-Bet";
+  const facingJam = params.scenario === "Facing Jam" || params.villain1Action === "Jam" || params.villain2Action === "Jam";
+
+  let out = {
+    ...freq,
+    openRaise: 0,
+    openJam: 0,
+    threeBet: 0,
+    threeBetJam: 0,
+    fourBet: 0,
+    fourBetJam: 0,
+    callJam: 0,
+  };
+
+  if (firstIn) {
+    if (stack <= 10) {
+      out.openJam = freq.raise;
+      out.openRaise = 0;
+    } else if (stack <= 15) {
+      out.openJam = roundToFive(freq.raise * 0.65);
+      out.openRaise = Math.max(0, freq.raise - out.openJam);
+    } else if (stack <= 25) {
+      out.openJam = roundToFive(freq.raise * 0.2);
+      out.openRaise = Math.max(0, freq.raise - out.openJam);
+    } else {
+      out.openRaise = freq.raise;
+      out.openJam = 0;
+    }
+  } else if (facingOpen) {
+    if (stack <= 15) {
+      out.threeBetJam = freq.raise;
+      out.threeBet = 0;
+      out.call = roundToFive(freq.call * 0.45);
+    } else if (stack <= 30) {
+      out.threeBetJam = roundToFive(freq.raise * 0.65);
+      out.threeBet = Math.max(0, freq.raise - out.threeBetJam);
+    } else if (stack <= 45) {
+      out.threeBetJam = roundToFive(freq.raise * 0.25);
+      out.threeBet = Math.max(0, freq.raise - out.threeBetJam);
+    } else {
+      out.threeBet = freq.raise;
+      out.threeBetJam = 0;
+    }
+  } else if (facing3bet) {
+    if (stack <= 35) {
+      out.fourBetJam = freq.raise;
+      out.fourBet = 0;
+    } else if (stack <= 60) {
+      out.fourBetJam = roundToFive(freq.raise * 0.45);
+      out.fourBet = Math.max(0, freq.raise - out.fourBetJam);
+    } else {
+      out.fourBet = freq.raise;
+      out.fourBetJam = 0;
+    }
+  } else if (facing4bet) {
+    if (stack <= 80) {
+      out.fourBetJam = freq.raise;
+      out.fourBet = 0;
+    } else {
+      out.fourBetJam = roundToFive(freq.raise * 0.65);
+      out.fourBet = Math.max(0, freq.raise - out.fourBetJam);
+    }
+  } else if (facingJam) {
+    out.callJam = freq.call;
+  } else if (params.scenario === "BB Defense") {
+    if (stack <= 25) {
+      out.threeBetJam = roundToFive(freq.raise * 0.55);
+      out.threeBet = Math.max(0, freq.raise - out.threeBetJam);
+    } else {
+      out.threeBet = freq.raise;
+    }
+  }
+
+  const aggressiveParts = [
+    ["Open Jam", out.openJam],
+    ["Open Raise", out.openRaise],
+    ["3-Bet Jam", out.threeBetJam],
+    ["3-Bet", out.threeBet],
+    ["4-Bet Jam", out.fourBetJam],
+    ["4-Bet", out.fourBet],
+    ["Call Jam", out.callJam],
+    ["Call", out.call],
+    ["Fold", out.fold],
+  ];
+  const best = aggressiveParts.reduce((a, b) => (b[1] > a[1] ? b : a), ["Fold", 0]);
+  out.primaryAction = best[0];
+
+  return out;
+}
+
+function jamModeText(freq, params) {
+  const stack = Number(params.stackBB || 25);
+  if (stack <= 10) return "Push/fold is dominant: most aggressive actions become all-in.";
+  if (stack <= 25) return "Jam branches are important: open jam, 3-bet jam, and 4-bet jam can exist depending on node.";
+  if (stack <= 45) return "Mostly non-all-in, but reshove/4-bet jam branches can still exist versus aggression.";
+  return "Deep-stack mode: non-all-in raise/3-bet/4-bet sizing dominates; jams are rare premium/exploit branches.";
+}
+
+
 function confidenceGrade(params) {
   let score = 82;
   if (params.villainCount === "2") score -= 10;
@@ -476,7 +581,11 @@ function sizingEngine({ format, heroPos, villainPos, scenario, stackBB, villainC
 
   let sizingLine = "";
   const straddleNote = straddle ? " UTG straddle format: sizes are displayed in normal BB units; 4bb = 2x straddle." : "";
-  if (scenario === "Unopened Pot / RFI") sizingLine = `Open around ${openRaise.toFixed(1)}bb.`;
+  if (scenario === "Unopened Pot / RFI") {
+    if (stack <= 10) sizingLine = `Push/fold zone: prefer open-jam or fold at ${stack}bb.`;
+    else if (stack <= 15) sizingLine = `Short stack: mix min-open around ${openRaise.toFixed(1)}bb and open-jam.`;
+    else sizingLine = `Open around ${openRaise.toFixed(1)}bb.`;
+  }
   else if (scenario === "Facing Open") sizingLine = `If 3-betting vs ${open.toFixed(1)}bb open: ${threeBet}bb ${ip ? "in position" : "out of position"}. Calling range should be tighter OOP.`;
   else if (scenario === "Facing 3-Bet" || has3bet) sizingLine = fourBet >= stack ? `4-bet jam for ${stack}bb when continuing aggressively.` : `If 4-betting: about ${fourBet}bb.`;
   else if (scenario === "Facing 4-Bet" || has4bet) sizingLine = `Mostly jam/call-off or fold; non-all-in sizing is less important at ${stack}bb.`;
@@ -525,7 +634,7 @@ function PreflopAnalyzer() {
 
   const positions = positionsByFormat[format];
   const params = useMemo(() => ({ format, heroPos, villainPos, villain1Action, villain2Pos, villain2Action, scenario, stackBB, villainCount, tablePreset, icmPressureQuick }), [format, heroPos, villainPos, villain1Action, villain2Pos, villain2Action, scenario, stackBB, villainCount, tablePreset, icmPressureQuick]);
-  const heroFreq = useMemo(() => normalizeFreqs(frequencies(heroHand, params)), [heroHand, params]);
+  const heroFreq = useMemo(() => applyShortStackJamLogic(normalizeFreqs(frequencies(heroHand, params)), params), [heroHand, params]);
   const sizing = useMemo(() => sizingEngine({ ...params, openSizeFaced, ante, tablePreset, icmPressure: Number(icmPressureQuick || 0) }), [params, openSizeFaced, ante, tablePreset, icmPressureQuick]);
   const confidence = useMemo(() => confidenceGrade(params), [params]);
   const reasons = useMemo(() => reasonBullets(heroHand, params, heroFreq, sizing), [heroHand, params, heroFreq, sizing]);
@@ -533,7 +642,7 @@ function PreflopAnalyzer() {
     let total = 0; const items = [];
     for (let r = 0; r < 13; r++) for (let c = 0; c < 13; c++) {
       const hand = handAt(r, c);
-      const freq = normalizeFreqs(frequencies(hand, params));
+      const freq = applyShortStackJamLogic(normalizeFreqs(frequencies(hand, params)), params);
       if (freq.raise + freq.call >= 35) total++;
       items.push({ hand, freq });
     }
@@ -610,11 +719,17 @@ function PreflopAnalyzer() {
           </div>
           <div className={`decisionBadge ${heroFreq.category}`}>{heroFreq.category}</div>
         </div>
-        <div className="freqGrid">
-          <div><span>Raise / 3-bet / Jam</span><strong>{heroFreq.raise}%</strong></div>
-          <div><span>Call / Continue</span><strong>{heroFreq.call}%</strong></div>
+        <div className="freqGrid actionBreakdown">
+          <div><span>Open Raise</span><strong>{heroFreq.openRaise || 0}%</strong></div>
+          <div><span>Open Jam</span><strong>{heroFreq.openJam || 0}%</strong></div>
+          <div><span>3-Bet</span><strong>{heroFreq.threeBet || 0}%</strong></div>
+          <div><span>3-Bet Jam</span><strong>{heroFreq.threeBetJam || 0}%</strong></div>
+          <div><span>4-Bet</span><strong>{heroFreq.fourBet || 0}%</strong></div>
+          <div><span>4-Bet Jam</span><strong>{heroFreq.fourBetJam || 0}%</strong></div>
+          <div><span>Call / Call Jam</span><strong>{heroFreq.callJam || heroFreq.call}%</strong></div>
           <div><span>Fold</span><strong>{heroFreq.fold}%</strong></div>
         </div>
+        <div className="jamModeNote">{jamModeText(heroFreq, params)}</div>
         <p className="scoreLine">Model score: {heroFreq.score} · continuing range approx. {gridData.total}/169 hands</p>
       </section>
 
