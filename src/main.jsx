@@ -38,7 +38,24 @@ function handAt(row, col) {
 
 function allHands() {
   const out = [];
-  for (let r = 0; r < 13; r++) for (let c = 0; c < 13; c++) out.push(handAt(r, c));
+
+  // User-friendly dropdown order:
+  // AA, AKs, AKo, AQs, AQo ... then KK, KQs, KQo ...
+  // This keeps suited and offsuit versions beside each other.
+  for (let i = 0; i < ranks.length; i++) {
+    const high = ranks[i];
+
+    // Pair first within each rank group.
+    out.push(`${high}${high}`);
+
+    // Then suited + offsuit combos together.
+    for (let j = i + 1; j < ranks.length; j++) {
+      const low = ranks[j];
+      out.push(`${high}${low}s`);
+      out.push(`${high}${low}o`);
+    }
+  }
+
   return out;
 }
 
