@@ -550,9 +550,10 @@ function PreflopAnalyzer() {
 
   function nextHand() {
     const currentIndex = positions.indexOf(heroPos);
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % positions.length : 0;
+    const nextIndex = currentIndex >= 0 ? (currentIndex - 1 + positions.length) % positions.length : 0;
 
-    // Rotate hero position and reset selected hand.
+    // Rotate hero position backward through the table order.
+    // Example: BTN -> CO -> HJ -> LJ.
     setHeroPos(positions[nextIndex]);
     setHeroHand("AKs");
     // Stack BB intentionally stays the same across positions.
@@ -587,7 +588,7 @@ function PreflopAnalyzer() {
 
       <section className="quickActionCard">
         <button type="button" onClick={nextHand}>Next Position →</button>
-        <p>Moves hero position to the next seat, keeps stack BB, and resets hand + spot.</p>
+        <p>Moves hero position backward, keeps stack BB, and resets hand + spot.</p>
       </section>
 
       {isUtgStraddleFormat(format) && (
